@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useState, useEffect } from "react"
 import { Search, Calendar, DollarSign, Filter, X } from "lucide-react"
@@ -88,7 +88,6 @@ export default function JoinTrip() {
         return
       }
 
-      // Trim whitespace from categories
       const uniqueCategories = Array.from(
         new Set(data.map((item) => item.influencer_category?.trim()).filter(Boolean))
       )
@@ -306,6 +305,8 @@ export default function JoinTrip() {
       </div>
 
       <div className="container mx-auto">
+        {/* Hero and Banner Section here (your existing code stays unchanged) */}
+
         <h2 className="text-3xl font-bold text-center mb-8">Our Upcoming Trips</h2>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -321,9 +322,11 @@ export default function JoinTrip() {
               <p className="text-center text-lg p-8 bg-white rounded-lg shadow">No trips found</p>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {trips.map((trip) => (                  <div key={trip.id} className="relative bg-black rounded-lg overflow-hidden shadow-md h-[300px]">                    <Image
+                {trips.map((trip) => (
+                  <div key={trip.id} className="relative bg-black rounded-lg overflow-hidden shadow-md h-[300px]">
+                    <Image
                       src={trip.image_url ? getAppwriteImageUrl(trip.image_url) : "/destination1.jpg"}
-                      alt={trip.destination || `Trip to ${trip.destination || 'exciting destination'}`}
+                      alt={trip.destination}
                       width={384}
                       height={192}
                       className="w-full h-64 object-cover"
@@ -359,9 +362,9 @@ export default function JoinTrip() {
                       <p className="text-sm opacity-80">{trip.influencer_category} Influencer Trip</p>
                     </div>
                     <Link href={`/trip/${trip.id}`}>
-                      <button className="absolute bottom-4 right-4 bg-gradient-to-r from-white/40 to-white/20 text-white px-4 py-2 rounded-full text-sm shadow-md flex items-center gap-2 hover:scale-105">
+                      <button className="absolute bottom-4 right-4 bg-gradient-to-r from-white/40 to-white/20 text-white px-4 py-2 rounded-full text-sm  shadow-md flex items-center gap-2 hover:scale-105">
                         View Details ➤
-                      </button>
+                      </button> 
                     </Link>
                   </div>
                 ))}

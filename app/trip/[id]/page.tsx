@@ -9,6 +9,7 @@ import { formatDate, calculateDuration } from "@/utils/format-date"
 import type { Trip, TripActivity, TripInclusion, TripExclusion } from "@/types/trips"
 import { use } from "react"
 import BookingForm from "./booking"
+import { getAppwriteImageUrl } from "@/lib/appwrite"
 
 export default function TripDetail({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params)
@@ -26,12 +27,15 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
             setLoading(true)
 
             try {
+                console.log(`Fetching trip details for ID: ${id}`);
+                
                 // Fetch trip details from trip_influencers table
                 const { data: tripInfluencerData, error: tripInfluencerError } = await supabase
                     .from("trip_influencers")
                     .select(`
                         *,
                         trips:trip_id (
+                            id,
                             group_size_min,
                             group_size_max,
                             meals_included,
@@ -40,42 +44,86 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
                         )
                     `)
                     .eq("id", id)
-                    .single()
+                    .single();
 
-                if (tripInfluencerError) throw tripInfluencerError
+                if (tripInfluencerError) {
+                    console.error("Error fetching trip_influencers:", tripInfluencerError);
+                    throw tripInfluencerError;
+                }
+
+                console.log("Trip influencer data:", tripInfluencerData);
+                
+                if (!tripInfluencerData) {
+                    console.error(`No trip found with ID: ${id}`);
+                    setLoading(false);
+                    return;
+                }
 
                 const tripId = tripInfluencerData.trip_id;
+                console.log(`Associated trip ID: ${tripId}`);
+                
+                if (!tripId) {
+                    console.error("No trip_id found in trip_influencer data");
+                    setLoading(false);
+                    return;
+                }
+
+                // Fetch trip images
+                const { data: imagesData, error: imagesError } = await supabase
+                    .from("trip_images")
+                    .select("*")
+                    .eq("trip_id", tripId);
+                
+                if (imagesError) {
+                    console.error("Error fetching trip images:", imagesError);
+                }
+                
+                console.log(`Found ${imagesData?.length || 0} images for trip`);
+                
+                // Find main image
+                let imageUrl = null;
+                if (imagesData && imagesData.length > 0) {
+                    const mainImage = imagesData.find(img => img.is_main) || imagesData[0];
+                    imageUrl = mainImage.image_url;
+                }
 
                 // Fetch trip activities
                 const { data: activitiesData, error: activitiesError } = await supabase
                     .from("trip_activities")
                     .select("*")
-                    .eq("trip_id", tripId)
+                    .eq("trip_id", tripId);
 
-                if (activitiesError) throw activitiesError
+                if (activitiesError) {
+                    console.error("Error fetching trip activities:", activitiesError);
+                    throw activitiesError;
+                }
 
                 // Fetch trip inclusions
                 const { data: inclusionsData, error: inclusionsError } = await supabase
                     .from("trip_inclusions")
                     .select(`
-                                *,
-                                trips:trip_id (
-                                title
-                                )
-                            `)
+                        *,
+                        trips:trip_id (
+                            title
+                        )
+                    `)
                     .eq("trip_id", tripId);
 
-                if (inclusionsError) throw inclusionsError
-
-
+                if (inclusionsError) {
+                    console.error("Error fetching trip inclusions:", inclusionsError);
+                    throw inclusionsError;
+                }
 
                 // Fetch trip exclusions
                 const { data: exclusionsData, error: exclusionsError } = await supabase
                     .from("trip_exclusions")
                     .select("*")
-                    .eq("trip_id", id)
+                    .eq("trip_id", tripId);
 
-                if (exclusionsError) throw exclusionsError
+                if (exclusionsError) {
+                    console.error("Error fetching trip exclusions:", exclusionsError);
+                    throw exclusionsError;
+                }
 
                 // Combine trip data with related trip details
                 const tripData = {
@@ -85,6 +133,7 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
                     meals_included: tripInfluencerData.trips?.meals_included,
                     accommodation: tripInfluencerData.trips?.accommodation,
                     description: tripInfluencerData.trips?.description || tripInfluencerData.description,
+                    image_url: imageUrl
                 }
 
 
@@ -139,7 +188,26 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
         <div className="min-h-screen bg-[#fffbe5]">
             {/* Hero Section */}
             <div className="relative h-[50vh] md:h-[60vh]">
-                <Image src="/destination1.jpg" alt={trip.destination} fill className="object-cover" priority />
+                <Image 
+                    src={trip.image_url ? getAppwriteImageUrl(trip.image_url) : "/destination1.jpg"} 
+                    alt={trip.destination || `Trip to amazing destination`} 
+                    fill 
+                    className="object-cover" 
+                    priority
+                    unoptimized
+                    onError={(e) => {
+                        // Avoid repeated console messages
+                        if (!(e.currentTarget as HTMLImageElement).dataset.errorLogged) {
+                            console.warn(`Hero image failed to load for trip ${trip.id}. Image ID: ${trip.image_url}`);
+                            (e.currentTarget as HTMLImageElement).dataset.errorLogged = 'true';
+                        }
+                        
+                        // Use consistent placeholder for the same trip ID
+                        const placeholders = ["/destination1.jpg", "/destination2.jpg", "/destination3.jpg"];
+                        const placeholderIndex = Math.abs((trip.id || 0) % placeholders.length);
+                        e.currentTarget.src = placeholders[placeholderIndex];
+                    }} 
+                />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
 
                 <div className="absolute bottom-0 left-0 w-full p-6 md:p-10 text-white">

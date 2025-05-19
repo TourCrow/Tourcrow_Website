@@ -1,29 +1,30 @@
-﻿"use client"
+"use client"
 
-import { useState, useEffect } from "react"
-import { Search, Calendar, DollarSign, Filter, X } from "lucide-react"
-import { getAppwriteImageUrl } from "@/lib/appwrite"
-import Link from "next/link"
-import Image from "next/image"
-import { getTrips, supabase } from "@/utils/supabase/client"
-import type { Trip } from "@/types/trips"
-import { formatDate, calculateDuration } from "@/utils/format-date"
+import { useEffect, useState } from "react";
+import { Search, Calendar, DollarSign, Filter, X } from "lucide-react";
+import Link from "next/link";
+import Image from "next/image";
+import { getTrips, supabase } from "@/utils/supabase/client";
+import type { Trip } from "@/types/trips";
+import { formatDate, calculateDuration } from "@/utils/format-date";
+import { getAppwriteImageUrl } from "@/lib/appwrite";
 
 interface FilterState {
-  destination: string
-  startDateAfter: string | null
-  startDateBefore: Date | null
-  minPrice: string
-  maxPrice: string
-  category: string
+  destination: string;
+  startDateAfter: string | null;
+  startDateBefore: Date | null;
+  minPrice: string;
+  maxPrice: string;
+  category: string;
 }
 
 export default function JoinTrip() {
-  const [categories, setCategories] = useState<string[]>([])
-  const [trips, setTrips] = useState<Trip[]>([])
-  const [loading, setLoading] = useState(true)
-  const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false)
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [categories, setCategories] = useState<string[]>([]);
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
   const [filters, setFilters] = useState<FilterState>({
     destination: "",
     startDateAfter: "",
@@ -31,29 +32,28 @@ export default function JoinTrip() {
     minPrice: "",
     maxPrice: "",
     category: "",
-  })
+  });
 
   const handleApplyFilters = () => {
     setDebouncedFilters(filters);
     setIsMobileFilterOpen(false);
   };
 
-  const [debouncedFilters, setDebouncedFilters] = useState(filters)
+  const [debouncedFilters, setDebouncedFilters] = useState(filters);
 
   // Debounce filter changes (wait 500ms before applying)
   useEffect(() => {
     const handler = setTimeout(() => {
-      setDebouncedFilters(filters)
-    }, 500)
+      setDebouncedFilters(filters);
+    }, 500);
 
-    return () => clearTimeout(handler)
-  }, [filters])
+    return () => clearTimeout(handler);
+  }, [filters]);
 
   // Fetch trips when debounced filters change
   useEffect(() => {
     const fetchTrips = async () => {
-      setLoading(true)
-      console.log("Fetching with category:", debouncedFilters.category)
+      setLoading(true);
       const data = await getTrips(
         debouncedFilters.destination,
         debouncedFilters.startDateAfter ? new Date(debouncedFilters.startDateAfter) : null,
@@ -61,43 +61,40 @@ export default function JoinTrip() {
         debouncedFilters.minPrice ? Number.parseFloat(debouncedFilters.minPrice) : null,
         debouncedFilters.maxPrice ? Number.parseFloat(debouncedFilters.maxPrice) : null,
         undefined,
-        debouncedFilters.category ? [debouncedFilters.category] : [],
-      )
-      console.log("Fetched trips:", data.length)
-      setTrips(data)
-      setLoading(false)
-    }
-    fetchTrips()
-  }, [debouncedFilters])
+        debouncedFilters.category ? [debouncedFilters.category] : []
+      );
+      setTrips(data);
+      setLoading(false);
+    };
+    fetchTrips();
+  }, [debouncedFilters]);
 
-  // Check admin status
+  // Check admin status (replace with real auth in production)
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const adminFlag = localStorage.getItem("isAdmin")
-      setIsAdmin(adminFlag === "true")
+      const adminFlag = localStorage.getItem("isAdmin");
+      setIsAdmin(adminFlag === "true");
     }
-  }, [])
+  }, []);
 
-  // Fetch categories
   useEffect(() => {
     const fetchCategories = async () => {
-      const { data, error } = await supabase.from("trip_influencers").select("influencer_category")
+      const { data, error } = await supabase.from("trip_influencers").select("influencer_category");
 
       if (error) {
-        console.error("Error fetching categories:", error.message)
-        return
+        console.error("Error fetching categories:", error.message);
+        return;
       }
 
-      // Trim whitespace from categories
       const uniqueCategories = Array.from(
         new Set(data.map((item) => item.influencer_category?.trim()).filter(Boolean))
-      )
+      );
 
-      setCategories(uniqueCategories)
-    }
+      setCategories(uniqueCategories);
+    };
 
-    fetchCategories()
-  }, [])
+    fetchCategories();
+  }, []);
 
   const FilterSidebar = (
     <div className="space-y-4 p-4">
@@ -306,6 +303,8 @@ export default function JoinTrip() {
       </div>
 
       <div className="container mx-auto">
+        {/* Hero and Banner Section here (your existing code stays unchanged) */}
+
         <h2 className="text-3xl font-bold text-center mb-8">Our Upcoming Trips</h2>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -321,26 +320,14 @@ export default function JoinTrip() {
               <p className="text-center text-lg p-8 bg-white rounded-lg shadow">No trips found</p>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {trips.map((trip) => (                  <div key={trip.id} className="relative bg-black rounded-lg overflow-hidden shadow-md h-[300px]">                    <Image
+                {trips.map((trip) => (
+                  <div key={trip.id} className="relative bg-black rounded-lg overflow-hidden shadow-md h-[300px]">
+                    <Image
                       src={trip.image_url ? getAppwriteImageUrl(trip.image_url) : "/destination1.jpg"}
-                      alt={trip.destination || `Trip to ${trip.destination || 'exciting destination'}`}
+                      alt={trip.destination}
                       width={384}
                       height={192}
                       className="w-full h-64 object-cover"
-                      unoptimized
-                      loading="lazy"
-                      onError={(e) => {
-                        // Avoid repeated console messages
-                        if (!(e.currentTarget as HTMLImageElement).dataset.errorLogged) {
-                          console.warn(`Image failed to load for trip ${trip.id}. Image ID: ${trip.image_url}`);
-                          (e.currentTarget as HTMLImageElement).dataset.errorLogged = 'true';
-                        }
-                        
-                        // Use consistent placeholder for the same trip ID
-                        const placeholders = ["/destination1.jpg", "/destination2.jpg", "/destination3.jpg"];
-                        const placeholderIndex = Math.abs((trip.id || 0) % placeholders.length);
-                        e.currentTarget.src = placeholders[placeholderIndex];
-                      }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
                     <div className="absolute top-0 mt-2 left-4 text-white z-10 bg-black bg-opacity-50 px-2 py-1 rounded-tl-lg">
@@ -361,7 +348,7 @@ export default function JoinTrip() {
                     <Link href={`/trip/${trip.id}`}>
                       <button className="absolute bottom-4 right-4 bg-gradient-to-r from-white/40 to-white/20 text-white px-4 py-2 rounded-full text-sm shadow-md flex items-center gap-2 hover:scale-105">
                         View Details ➤
-                      </button>
+                      </button> 
                     </Link>
                   </div>
                 ))}

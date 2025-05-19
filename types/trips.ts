@@ -34,6 +34,11 @@ export interface Trip {
   meals_included?: string
   accommodation?: string
   host_id?: number
+  /**
+   * URL of the trip's main image stored in Appwrite storage
+   * Used in trip/[id]/page.tsx and join-trip/page.tsx for image display
+   */
+  image_url: string
 }
 
 export interface TripActivity {
