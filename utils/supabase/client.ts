@@ -128,20 +128,22 @@ export async function getTrips(
     // Process and combine the data
     const processedData = influencerData.map((item: any) => {
       // Find images for this trip
-      const tripImages = imageData?.filter(img => img.trip_id === item.trip_id) || [];
-      console.log(`Trip ID ${item.trip_id} has ${tripImages.length} images`);
-      
-      // Get main image or first available image
+      const tripImages = imageData?.filter(img => img.trip_id === item.trip_id) || [];    // Get main image only (not banner)
       let mainImage = tripImages.find(img => img.is_main === true);
       if (!mainImage && tripImages.length > 0) {
         mainImage = tripImages[0];
       }
-      
       const imageUrl = mainImage?.image_url || null;
-      console.log(`Trip ID ${item.trip_id} main image URL:`, imageUrl);
-
-      return {
+      
+      // Make sure we have a valid trip ID before returning
+      if (!item.trip_id) {
+        console.warn(`Missing trip_id in influencer data:`, item);
+        return null;
+      }
+        return {
         ...item,
+        id: item.id, // Keep the existing id
+        trip_id: item.trip_id, // Ensure trip_id is explicitly included
         group_size_min: item.trips?.group_size_min,
         group_size_max: item.trips?.group_size_max,
         meals_included: item.trips?.meals_included,
@@ -149,7 +151,7 @@ export async function getTrips(
         status: item.trips?.status,
         image_url: imageUrl
       };
-    });
+    }).filter(Boolean); // Remove any null items
     
     return processedData as Trip[]
   } catch (err) {

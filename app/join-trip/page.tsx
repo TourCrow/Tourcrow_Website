@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Search, Calendar, DollarSign, Filter, X } from "lucide-react"
-import { getAppwriteImageUrl } from "@/lib/appwrite"
+import { getTripImageUrl } from "@/lib/image-helpers"
 import Link from "next/link"
 import Image from "next/image"
 import { getTrips, supabase } from "@/utils/supabase/client"
@@ -322,24 +322,28 @@ export default function JoinTrip() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {trips.map((trip) => (                  <div key={trip.id} className="relative bg-black rounded-lg overflow-hidden shadow-md h-[300px]">                    <Image
-                      src={trip.image_url ? getAppwriteImageUrl(trip.image_url) : "/destination1.jpg"}
+                      src={getTripImageUrl(trip.image_url, trip.id)}
                       alt={trip.destination || `Trip to ${trip.destination || 'exciting destination'}`}
                       width={384}
                       height={192}
                       className="w-full h-64 object-cover"
                       unoptimized
-                      loading="lazy"
-                      onError={(e) => {
-                        // Avoid repeated console messages
-                        if (!(e.currentTarget as HTMLImageElement).dataset.errorLogged) {
-                          console.warn(`Image failed to load for trip ${trip.id}. Image ID: ${trip.image_url}`);
-                          (e.currentTarget as HTMLImageElement).dataset.errorLogged = 'true';
+                      loading="lazy"                      onError={(e) => {
+                        try {
+                          // Avoid repeated console messages
+                          if (!(e.currentTarget as HTMLImageElement).dataset.errorLogged) {
+                            console.warn(`Image failed to load for trip ${trip.id}. Image ID: ${trip.image_url}`);
+                            (e.currentTarget as HTMLImageElement).dataset.errorLogged = 'true';
+                          }
+                          
+                          // Use consistent placeholder for the same trip ID
+                          const placeholders = ["/destination1.jpg", "/destination2.jpg", "/destination3.jpg"];
+                          const placeholderIndex = Math.abs((trip.id || 0) % placeholders.length);
+                          e.currentTarget.src = placeholders[placeholderIndex];
+                        } catch (error) {
+                          console.error('Error handling image fallback:', error);
+                          e.currentTarget.src = '/destination1.jpg';
                         }
-                        
-                        // Use consistent placeholder for the same trip ID
-                        const placeholders = ["/destination1.jpg", "/destination2.jpg", "/destination3.jpg"];
-                        const placeholderIndex = Math.abs((trip.id || 0) % placeholders.length);
-                        e.currentTarget.src = placeholders[placeholderIndex];
                       }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
@@ -348,8 +352,7 @@ export default function JoinTrip() {
                         📅 {formatDate(trip.start_date)} - {formatDate(trip.end_date)} |{" "}
                         {calculateDuration(trip.start_date, trip.end_date)}
                       </p>
-                    </div>
-                    <div className="absolute bottom-4 left-4 text-white z-10">
+                    </div>                    <div className="absolute bottom-4 left-4 text-white z-10">
                       <h3 className="text-xl font-bold">{trip.destination}</h3>
                       <h2 className="text-base text-white mt-2">
                         <b>Influencer: </b>
@@ -358,7 +361,7 @@ export default function JoinTrip() {
                       <p className="font-bold text-lg">₹ {trip.price}</p>
                       <p className="text-sm opacity-80">{trip.influencer_category} Influencer Trip</p>
                     </div>
-                    <Link href={`/trip/${trip.id}`}>
+                    <Link href={`/trip/${trip.trip_id || trip.id}`}>
                       <button className="absolute bottom-4 right-4 bg-gradient-to-r from-white/40 to-white/20 text-white px-4 py-2 rounded-full text-sm shadow-md flex items-center gap-2 hover:scale-105">
                         View Details ➤
                       </button>

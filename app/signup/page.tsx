@@ -6,6 +6,10 @@ import { useRouter } from "next/navigation";
 export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [mobile, setMobile] = useState("");
+  const [occupation, setOccupation] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const router = useRouter();
@@ -14,10 +18,21 @@ export default function SignupPage() {
     e.preventDefault();
     setError("");
     setSuccess("");
-    const { error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) {
       setError(error.message);
     } else {
+      // Optionally, insert user profile data into a 'profiles' table
+      if (data.user) {
+        await supabase.from("profiles").upsert({
+          id: data.user.id,
+          email,
+          first_name: firstName,
+          last_name: lastName,
+          mobile,
+          occupation
+        });
+      }
       setSuccess("Signup successful! Please check your email to confirm your account.");
       setTimeout(() => router.push("/login"), 2000);
     }
@@ -41,6 +56,38 @@ export default function SignupPage() {
             placeholder="Password"
             value={password}
             onChange={e => setPassword(e.target.value)}
+            className="border border-brand-yellow bg-black/60 text-brand-yellow placeholder:text-brand-yellow/70 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-yellow shadow"
+            required
+          />
+          <input
+            type="text"
+            placeholder="First Name"
+            value={firstName}
+            onChange={e => setFirstName(e.target.value)}
+            className="border border-brand-yellow bg-black/60 text-brand-yellow placeholder:text-brand-yellow/70 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-yellow shadow"
+            required
+          />
+          <input
+            type="text"
+            placeholder="Last Name"
+            value={lastName}
+            onChange={e => setLastName(e.target.value)}
+            className="border border-brand-yellow bg-black/60 text-brand-yellow placeholder:text-brand-yellow/70 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-yellow shadow"
+            required
+          />
+          <input
+            type="tel"
+            placeholder="Mobile Number"
+            value={mobile}
+            onChange={e => setMobile(e.target.value)}
+            className="border border-brand-yellow bg-black/60 text-brand-yellow placeholder:text-brand-yellow/70 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-yellow shadow"
+            required
+          />
+          <input
+            type="text"
+            placeholder="Occupation"
+            value={occupation}
+            onChange={e => setOccupation(e.target.value)}
             className="border border-brand-yellow bg-black/60 text-brand-yellow placeholder:text-brand-yellow/70 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-yellow shadow"
             required
           />

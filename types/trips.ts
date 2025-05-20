@@ -21,6 +21,7 @@
 
 export interface Trip {
   id: number
+  trip_id?: number // The original trip ID from the trips table
   influencer_category: string
   influcencer_name: string
   destination: string

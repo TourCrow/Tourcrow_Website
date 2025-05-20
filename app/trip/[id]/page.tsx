@@ -9,7 +9,7 @@ import { formatDate, calculateDuration } from "@/utils/format-date"
 import type { Trip, TripActivity, TripInclusion, TripExclusion } from "@/types/trips"
 import { use } from "react"
 import BookingForm from "./booking"
-import { getAppwriteImageUrl } from "@/lib/appwrite"
+import { getTripImageUrl } from "@/lib/image-helpers"
 
 export default function TripDetail({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params)
@@ -30,7 +30,7 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
                 console.log(`Fetching trip details for ID: ${id}`);
                 
                 // Fetch trip details from trip_influencers table
-                const { data: tripInfluencerData, error: tripInfluencerError } = await supabase
+                const { data: influencerData, error: tripInfluencerError } = await supabase
                     .from("trip_influencers")
                     .select(`
                         *,
@@ -43,25 +43,121 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
                             description
                         )
                     `)
-                    .eq("id", id)
-                    .single();
+                    .eq("trip_id", id);
 
                 if (tripInfluencerError) {
                     console.error("Error fetching trip_influencers:", tripInfluencerError);
                     throw tripInfluencerError;
                 }
 
-                console.log("Trip influencer data:", tripInfluencerData);
+                console.log("Trip influencers data:", influencerData);
                 
-                if (!tripInfluencerData) {
-                    console.error(`No trip found with ID: ${id}`);
+                // Use this variable to store either the original data or our default
+                let influencersData = influencerData;
+                
+                if (!influencersData || influencersData.length === 0) {
+                    console.log(`No trip influencers found for trip ID: ${id}, fetching trip directly`);
+                    
+                    try {
+                        // Make sure we have a valid ID - could be string or number
+                        let numericId;
+                        try {
+                            numericId = parseInt(id, 10);
+                            if (isNaN(numericId)) {
+                                console.error(`Invalid trip ID: ${id} - not a number`);
+                                setLoading(false);
+                                return;
+                            }
+                            // Log valid numeric ID for debugging
+                            console.log(`Converted trip ID: ${id} to numeric ID: ${numericId}`);
+                        } catch (e) {
+                            console.error(`Error parsing trip ID: ${id}`, e);
+                            setLoading(false);
+                            return;
+                        }
+                        
+                        console.log(`Fetching trip with numeric ID: ${numericId}`);
+                        
+                        // Try fetching without using eq filter first (common cause of issues)
+                        const { data: allTripsData, error: allTripsError } = await supabase
+                            .from("trips")
+                            .select("*");
+                            
+                        if (allTripsError) {
+                            console.error("Error fetching all trips:", allTripsError);
+                        } else {
+                            console.log(`Found ${allTripsData?.length || 0} total trips in database`);
+                            
+                            // Find the trip with matching ID manually to debug
+                            const matchingTrip = allTripsData?.find(t => t.id === numericId);
+                            if (matchingTrip) {
+                                console.log(`Trip with ID ${numericId} exists in database:`, matchingTrip);
+                            } else {
+                                console.log(`No trip with ID ${numericId} found in database`);
+                            }
+                        }
+                        
+                        // Attempt to fetch the trip directly with the numeric ID
+                        const { data: directTripData, error: directTripError } = await supabase
+                            .from("trips")
+                            .select("*")
+                            .eq("id", numericId)
+                            .maybeSingle();
+                        
+                        if (directTripError) {
+                            console.error(`Error fetching trip ${id} directly:`, directTripError);
+                            setLoading(false);
+                            return;
+                        }
+                        
+                        if (!directTripData) {
+                            console.log(`No trip found with ID: ${numericId}`);
+                            console.error("Trip not found - Setting trip state to null");
+                            setTrip(null);
+                            setLoading(false);
+                            return;
+                        }
+                        
+                        console.log("Found trip directly:", directTripData);
+                        
+                        // Create a default trip influencer if none exists
+                        // This will allow the trip to display even without influencers
+                        const defaultTripInfluencer = {
+                            trip_id: directTripData.id,
+                            influcencer_name: directTripData.title || "Trip Host",
+                            influencer_category: "Travel",
+                            price: "Contact for price",
+                            start_date: new Date().toISOString().split('T')[0],
+                            end_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                            trips: directTripData
+                        };
+                        
+                        // Continue with this default influencer data
+                        influencersData = [defaultTripInfluencer];
+                    } catch (error) {
+                        console.error(`Unexpected error fetching trip ${id}:`, error);
+                        setTrip(null);
+                        setLoading(false);
+                        return;
+                    }
+                }
+
+                // Make sure we have influencer data before proceeding
+                if (!influencersData || influencersData.length === 0) {
+                    console.error("No trip or influencer data found");
                     setLoading(false);
                     return;
                 }
 
-                const tripId = tripInfluencerData.trip_id;
+                // Use the first trip influencer for display
+                const tripInfluencerData = influencersData[0];
+
+                // Convert tripId to number for consistency in all remaining queries
+                const tripId = typeof tripInfluencerData.trip_id === 'string' ? 
+                    parseInt(tripInfluencerData.trip_id, 10) : tripInfluencerData.trip_id;
+
                 console.log(`Associated trip ID: ${tripId}`);
-                
+
                 if (!tripId) {
                     console.error("No trip_id found in trip_influencer data");
                     setLoading(false);
@@ -80,11 +176,32 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
                 
                 console.log(`Found ${imagesData?.length || 0} images for trip`);
                 
-                // Find main image
+                // Find banner image, fallback to main image, and clean any double slashes in URLs
                 let imageUrl = null;
                 if (imagesData && imagesData.length > 0) {
-                    const mainImage = imagesData.find(img => img.is_main) || imagesData[0];
-                    imageUrl = mainImage.image_url;
+                    const bannerImage = imagesData.find(img => img.is_banner);
+                    const mainImage = imagesData.find(img => img.is_main);
+                    const rawImageUrl = bannerImage?.image_url || mainImage?.image_url || imagesData[0].image_url;
+                    
+                    // Clean image URL to prevent double-slash issues
+                    if (rawImageUrl) {
+                        if (rawImageUrl.startsWith('http')) {
+                            // For URLs, only fix double slashes after the domain part
+                            const urlParts = rawImageUrl.split('://');
+                            if (urlParts.length >= 2) {
+                                const protocol = urlParts[0]; // http or https
+                                const rest = urlParts.slice(1).join('://');
+                                // Replace multiple slashes with single slash, but preserve // after protocol
+                                const cleanedRest = rest.replace(/([^:])\/+/g, '$1/');
+                                imageUrl = `${protocol}://${cleanedRest}`;
+                            } else {
+                                imageUrl = rawImageUrl;
+                            }
+                        } else {
+                            // For relative paths or storage paths, replace consecutive slashes
+                            imageUrl = rawImageUrl.replace(/\/+/g, '/').replace(/^\/+/, '');
+                        }
+                    }
                 }
 
                 // Fetch trip activities
@@ -150,6 +267,11 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
                 setExclusions(exclusionsData as TripExclusion[])
             } catch (error) {
                 console.error("Error fetching trip details:", error)
+                setTrip(null)
+                setTripDetails(null)
+                setActivities([])
+                setInclusions([])
+                setExclusions([])
             } finally {
                 setLoading(false)
             }
@@ -170,11 +292,11 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
         return (
             <div className="min-h-screen bg-[#fffbe5] p-6 flex flex-col items-center justify-center">
                 <h2 className="text-2xl font-bold mb-4">Trip not found</h2>
+                <p className="text-gray-600 mb-6">The trip you're looking for might not exist or could have been removed.</p>
                 <Link
-                    href="/join-trip">
-                    <ArrowLeft className="w-4 h-4" /> Back to trips
+                    href="/join-trip" className="bg-amber-500 hover:bg-amber-600 text-white font-bold py-2 px-6 rounded-full transition-colors flex items-center gap-2">
+                    <ArrowLeft className="w-4 h-4" /> Browse available trips
                 </Link>
-
             </div>
         )
     }
@@ -189,10 +311,10 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
             {/* Hero Section */}
             <div className="relative h-[50vh] md:h-[60vh]">
                 <Image 
-                    src={trip.image_url ? getAppwriteImageUrl(trip.image_url) : "/destination1.jpg"} 
-                    alt={trip.destination || `Trip to amazing destination`} 
+                    src={getTripImageUrl(trip.image_url, trip.id)}
+                    alt={trip.destination || `Trip to amazing destination`}
                     fill 
-                    className="object-cover" 
+                    className="object-cover"
                     priority
                     unoptimized
                     onError={(e) => {
@@ -203,10 +325,10 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
                         }
                         
                         // Use consistent placeholder for the same trip ID
-                        const placeholders = ["/destination1.jpg", "/destination2.jpg", "/destination3.jpg"];
+                        const placeholders = ['/destination1.jpg', '/destination2.jpg', '/destination3.jpg'];
                         const placeholderIndex = Math.abs((trip.id || 0) % placeholders.length);
                         e.currentTarget.src = placeholders[placeholderIndex];
-                    }} 
+                    }}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
 
