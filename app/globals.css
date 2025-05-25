@@ -155,4 +155,132 @@ html {
    
     }
    
-}  
+}
+
+/* Auth UI Animations and Styles */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(254, 201, 15, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(254, 201, 15, 0.5);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.6s ease-out;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.5s ease-out;
+}
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.5s ease-out;
+}
+
+.animate-glow {
+  animation: glow 2s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* Glassmorphism effects */
+.glass {
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.125);
+}
+
+/* Custom input focus effects */
+.auth-input:focus {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(254, 201, 15, 0.15);
+}
+
+/* Button hover effects */
+.auth-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(254, 201, 15, 0.25);
+}
+
+/* Social button hover effects */
+.social-button:hover {
+  transform: translateY(-1px);
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Progress indicator animations */
+.progress-step {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.progress-step.active {
+  transform: scale(1.1);
+}
+
+.progress-line {
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Mobile responsive adjustments for auth */
+@media (max-width: 640px) {
+  .auth-card {
+    margin: 1rem;
+    padding: 1.5rem;
+  }
+}

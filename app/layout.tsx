@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Montserrat_Alternates } from 'next/font/google';
 import "./globals.css";
 import Navbar from '../components/Navbar'; // Adjust the path as needed
+import { AuthProvider } from '../contexts/AuthContext';
 
 
 const montserratAlternates = Montserrat_Alternates({
@@ -28,8 +29,10 @@ export default function RootLayout({
       <body
         className={montserratAlternates.className}
       >
-        <Navbar />
-        {children}
+        <AuthProvider>
+          <Navbar />
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

@@ -72,15 +72,35 @@ export default function Section7() {
               <h2 className="font-semibold text-lg">Support</h2>
               <ul className="space-y-1 text-sm text-white">
                 <li>
+                  <Link href="/contact" className="hover:text-[#fec90f]">
+                    Contact Us
+                  </Link>
+                </li>
+                <li>
                   <Link href="#" className="hover:text-[#fec90f]">
                     FAQs
                   </Link>
                 </li>
-                {/* <li>
-                  <Link href="#" className="hover:text-[#fec90f]">
-                    Contact Us
+                <li>
+                  <Link href="/privacy-policy" className="hover:text-[#fec90f]">
+                    Privacy Policy
                   </Link>
-                </li> */}
+                </li>
+                <li>
+                  <Link href="/terms-conditions" className="hover:text-[#fec90f]">
+                    Terms & Conditions
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/shipping-policy" className="hover:text-[#fec90f]">
+                    Shipping Policy
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/cancellation-refund-policy" className="hover:text-[#fec90f]">
+                    Cancellation & Refund
+                  </Link>
+                </li>
               </ul>
             </div>
           </div>

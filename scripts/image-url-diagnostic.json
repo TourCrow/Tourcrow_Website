@@ -1,0 +1,21 @@
+{
+  "timestamp": "2025-05-25T12:15:40.386Z",
+  "appwrite": {
+    "endpoint": "https://fra.cloud.appwrite.io/v1",
+    "project": "6829e6ff000346c36cca",
+    "bucket": "6829e729001004328039"
+  },
+  "results": [
+    {
+      "imageId": "1748173319809-images.jpeg",
+      "tripId": 16,
+      "url": "https://fra.cloud.appwrite.io/v1/storage/buckets/6829e729001004328039/files/1748173319809-images.jpeg/preview?width=800&height=600&gravity=center&quality=90&output=v%3D1748175338870&project=6829e6ff000346c36cca",
+      "accessible": false,
+      "status": 403,
+      "error": "Request failed with status code 403"
+    }
+  ],
+  "problematicIds": [
+    "1748173319809-images.jpeg"
+  ]
+}
