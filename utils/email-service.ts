@@ -1,4 +1,7 @@
-import { createClient } from '@/utils/supabase/server'
+
+import { createClient } from '@supabase/supabase-js'
+
+
 
 interface EmailData {
   to: string
@@ -41,7 +44,10 @@ export async function sendEmail(emailData: EmailData) {
  */
 export async function sendBookingConfirmationEmail(bookingId: string) {
   try {
-    const supabase = createClient()
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+      process.env.SUPABASE_SERVICE_ROLE_KEY as string
+    )
     
     // Get booking details with traveler and trip information
     const { data: booking, error } = await supabase
