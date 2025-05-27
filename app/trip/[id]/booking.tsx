@@ -2,28 +2,19 @@
 
 import type React from "react"
 
-import { useState } from "react"
-import { ArrowLeft, Info, Loader2 } from "lucide-react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect } from "react"
+import { ArrowLeft, Info, Loader2, CreditCard } from "lucide-react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "@/utils/supabase/client"
 import { useToast } from "@/components/ui/use-toast"
 import type { Trip } from "@/types/trips"
+import { useAuth } from "@/contexts/AuthContext" 
+import type { TravelerInfo, TripData, RazorpayResponse, RazorpayOptions, RetryBookingData, BookingInfo } from "@/types/booking"
 
-type TravelerInfo = {
-  firstName: string
-  lastName: string
-  email: string
-  gender: string
-  dateOfBirth: {
-    month: string
-    day: string
-    year: string
+declare global {
+  interface Window {
+    Razorpay: any;
   }
-  phone: string
-  instagramHandle: string
-  country: string
-  ageError?: string
-  phoneError?: string
 }
 
 type BookingFormProps = {
@@ -33,7 +24,84 @@ type BookingFormProps = {
 
 export default function BookingForm({ trip, onBack }: BookingFormProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { toast } = useToast()
+  const { user, loading } = useAuth() // Get auth state
+  
+  // Check if this is a payment retry
+  const retryBookingId = searchParams.get('retry')
+  const [isRetryPayment, setIsRetryPayment] = useState(false)
+  const [retryBookingData, setRetryBookingData] = useState<RetryBookingData | null>(null)
+  
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!loading && !user) {
+      toast({
+        title: "Login Required",
+        description: "You need to be logged in to book a trip.",
+        variant: "destructive",
+      })
+      router.push('/login')
+    }
+  }, [user, loading, router, toast])
+  
+  // Check for retry booking
+  useEffect(() => {
+    if (retryBookingId) {
+      fetchRetryBookingData()
+    }
+  }, [retryBookingId])
+  
+  // Function to fetch booking data for a retry payment
+  const fetchRetryBookingData = async () => {
+    if (!retryBookingId) return
+    
+    try {
+      const { data, error } = await supabase
+        .from('bookings')
+        .select(`
+          id,
+          total_price,
+          contact_email,
+          contact_number,
+          trip_id,
+          travelers (
+            first_name,
+            last_name,
+            email,
+            phone,
+            gender,
+            date_of_birth,
+            instagram_handle,
+            country
+          )
+        `)
+        .eq('id', retryBookingId)
+        .eq('user_id', user?.id)
+        .single()
+      
+      if (error || !data) {
+        console.error('Error fetching booking for retry:', error)
+        toast({
+          title: "Error",
+          description: "Could not load your booking details for retry payment.",
+          variant: "destructive"
+        })
+        return
+      }
+      
+      setRetryBookingData(data)
+      setIsRetryPayment(true)
+      
+      toast({
+        title: "Payment Retry",
+        description: "Your previous booking details have been loaded. Please proceed to payment.",
+      })
+    } catch (error) {
+      console.error('Error:', error)
+    }
+  }
+  
   const [travelers, setTravelers] = useState<TravelerInfo[]>([
     {
       firstName: "",
@@ -53,6 +121,53 @@ export default function BookingForm({ trip, onBack }: BookingFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [keepMeLooped, setKeepMeLooped] = useState(true)
   const [totalPrice, setTotalPrice] = useState(trip.price || 0)
+
+  // Calculate deposit amount (25% of total)
+  const depositAmount = Math.round(totalPrice * 0.25)
+
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      const script = document.createElement('script')
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+      script.onload = () => resolve(true)
+      script.onerror = () => resolve(false)
+      document.body.appendChild(script)
+    })
+  }
+
+  const createRazorpayOrder = async (bookingId: string) => {
+    try {
+      const response = await fetch('/api/payment/create-order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          amount: depositAmount,
+          currency: 'INR',
+          bookingId: bookingId,
+          tripId: trip.id,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Error creating Razorpay order:', errorData);
+        throw new Error(errorData.error || 'Failed to create payment order');
+      }
+
+      return await response.json();
+    } catch (error: any) {
+      console.error('Error creating Razorpay order:', error);
+      // Show a user-friendly toast message
+      toast({
+        title: "Payment Setup Failed",
+        description: "There was an issue setting up your payment. Please try again.",
+        variant: "destructive"
+      });
+      throw error;
+    }
+  }
 
   const handleAddTraveler = () => {
     setTravelers((prevTravelers) => {
@@ -139,114 +254,335 @@ export default function BookingForm({ trip, onBack }: BookingFormProps) {
       if (traveler.ageError || traveler.phoneError) {
         return false
       }
-    }
-    return true
   }
+  return true
+}
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-  
-    // Validate form before submission
+  // Using type definitions from types/booking.ts
+  const handleSubmit = async (event: React.FormEvent): Promise<void> => {
+    event.preventDefault()
+    
     if (!validateForm()) {
-      toast({
-        variant: "destructive",
-        title: "Validation Error",
-        description: "Please fix the errors in the form before continuing.",
-      })
       return
     }
   
     setIsSubmitting(true)
-  
+    
     try {
-      // First, verify the trip exists by joining trips and trip_influencer tables
-      const { data: tripData, error: tripFetchError } = await supabase
-        .from("trips")
-        .select(`
-          *,
-          trip_influencer!inner(*)
-        `)
-        .eq("id", trip.id)
-        .single()
-  
-      if (tripFetchError || !tripData) {
-        throw new Error("Could not verify trip details. The trip may no longer be available.")
+      // Handle retry payment flow separately
+      if (isRetryPayment && retryBookingData) {
+        await handleRetryPayment();
+        return;
       }
-  
-      // Create the booking with the verified trip_id
-      const { data: bookingData, error: bookingError } = await supabase
-        .from("bookings")
-        .insert({
-          trip_id: tripData.id,
-          total_price: totalPrice,
-          booking_date: new Date().toISOString(),
-          status: "pending",
-          contact_email: travelers[0].email,
-          contact_number: travelers[0].phone,
-          // Add any other fields that might be needed from trip_influencer
-          influencer_id: tripData.trip_influencer?.influencer_id || null,
-        })
-        .select()
-  
-      console.log("Creating booking with:", {
-        trip_id: tripData.id,
-        total_price: totalPrice,
-        contact_email: travelers[0].email,
-        contact_number: travelers[0].phone,
-      })
-  
-      if (bookingError) throw bookingError
-  
-      // Get the booking ID from the response
-      const bookingId = bookingData[0].id
-  
-      // Create traveler records
-      const travelerPromises = travelers.map(async (traveler) => {
-        // Format date of birth
-        const dob = `${traveler.dateOfBirth.year}-${traveler.dateOfBirth.month}-${traveler.dateOfBirth.day}`
-  
-        const { error: travelerError } = await supabase.from("travelers").insert({
-          booking_id: bookingId,
-          first_name: traveler.firstName,
-          last_name: traveler.lastName,
-          email: traveler.email,
-          gender: traveler.gender,
-          date_of_birth: dob,
-          phone: traveler.phone,
-          instagram_handle: traveler.instagramHandle || null,
-          country: traveler.country,
-          is_subscribed: traveler.email === travelers[0].email ? keepMeLooped : false,
-        })
-  
-        if (travelerError) throw travelerError
-      })
-  
-      // Wait for all traveler records to be created
-      await Promise.all(travelerPromises)
-  
-      // Success! Show toast and redirect
-      toast({
-        title: "Booking Created",
-        description: "Your booking has been successfully created!",
-      })
-  
-      // Redirect to payment page
-      router.push(`/trip/${tripData.id}/payment?booking=${bookingId}`)
+      
+      // Handle new booking flow
+      await handleNewBooking();
+      
     } catch (error: any) {
       console.error("Error creating booking:", error)
+      console.error("Error stack:", error.stack)
+      console.error("Error details:", JSON.stringify(error, null, 2))
+      
+      let errorMessage = "There was a problem creating your booking. Please try again."
+      
+      if (error.message) {
+        errorMessage = error.message
+      } else if (error.details) {
+        errorMessage = error.details
+      } else if (error.hint) {
+        errorMessage = error.hint
+      }
+      
       toast({
         variant: "destructive",
         title: "Booking Failed",
-        description: error.message || "There was a problem creating your booking. Please try again.",
+        description: errorMessage,
       })
-    } finally {
       setIsSubmitting(false)
     }
+    // Note: Don't automatically set isSubmitting to false in finally block 
+    // since payment might still be in progress
   }
-  
 
-  // Calculate deposit amount (25% of total)
-  const depositAmount = totalPrice * 0.25
+  // Separate function for retry payment flow
+  const handleRetryPayment = async (): Promise<void> => {
+    if (!retryBookingData) return;
+
+    console.log("Retrying payment for existing booking:", retryBookingData.id);
+    
+    // @ts-ignore - TypeScript incorrectly reports 'any' type issue
+    const retryBookingId: string = retryBookingData.id;
+    // @ts-ignore - TypeScript incorrectly reports 'any' type issue
+    const retryTripId: string = retryBookingData.trip_id;
+    
+    // Get trip data for the existing booking
+    const { data: existingTripData, error: tripFetchError } = await supabase
+      .from("trips")
+      .select(`
+        *,
+        trip_influencers!inner(*)
+      `)
+      .eq("id", retryBookingData.trip_id)
+      .single();
+    
+    if (tripFetchError || !existingTripData) {
+      throw new Error("Could not verify trip details for retry payment.")
+    }
+    
+    // @ts-ignore - TypeScript incorrectly reports 'any' type issue
+    const retryTripData: TripData = existingTripData as TripData;
+    
+    const scriptLoaded = await loadRazorpayScript()
+    if (!scriptLoaded) {
+      throw new Error('Failed to load payment gateway. Please try again.')
+    }
+    
+    const orderData = await createRazorpayOrder(retryBookingId)
+    
+    // Calculate deposit amount for retry payment
+    const retryDepositAmount: number = Math.round(retryBookingData.total_price * 0.25);
+    
+    const options: RazorpayOptions = {
+      key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+      amount: orderData.amount,
+      currency: orderData.currency,
+      name: 'Tourcrow',
+      description: `Deposit for ${retryTripData.name || trip.destination}`,
+      order_id: orderData.id,
+      handler: (response: RazorpayResponse) => {
+        handlePaymentVerification(response, retryBookingId, retryTripId, retryDepositAmount);
+      },
+      prefill: {
+        name: retryBookingData.travelers[0]?.full_name || '',
+        email: retryBookingData.contact_email,
+        contact: retryBookingData.contact_number,
+      },
+      theme: {
+        color: '#ef4444',
+      },
+      modal: {
+        ondismiss: () => {
+          handlePaymentCancel(retryBookingId, retryTripId);
+        }
+      }
+    }
+    
+    initializeRazorpay(options);
+  }
+
+  // Separate function for new booking flow
+  const handleNewBooking = async (): Promise<void> => {
+    // @ts-ignore - TypeScript incorrectly reports 'any' type issue
+    const newTripId: string = trip.trip_id || trip.id;
+    console.log("Using trip ID for new booking:", newTripId)
+    
+    const { data: newTripData, error: tripFetchError } = await supabase
+      .from("trips")
+      .select(`
+        *,
+        trip_influencers!inner(*)
+      `)
+      .eq("id", newTripId)
+      .single()
+
+    if (tripFetchError || !newTripData) {
+      throw new Error("Could not verify trip details. The trip may no longer be available.")
+    }
+    
+    // @ts-ignore - TypeScript incorrectly reports 'any' type issue
+    const newBookingTripData: TripData = newTripData as TripData;
+    
+    // Create the booking with the verified trip_id (only for new bookings)
+    console.log("Creating booking with:", {
+      trip_id: newBookingTripData.id,
+      total_price: totalPrice,
+      contact_email: travelers[0].email,
+      contact_number: travelers[0].phone,
+    })
+
+    const { data: bookingData, error: bookingError } = await supabase
+      .from("bookings")
+      .insert({
+        trip_id: newBookingTripData.id,
+        user_id: user?.id, // Use authenticated user ID
+        total_price: totalPrice,
+        booking_date: new Date().toISOString(),
+        status: "pending",
+        contact_email: travelers[0].email,
+        contact_number: travelers[0].phone,
+      })
+      .select()
+
+    console.log("Booking creation result:", { bookingData, bookingError })
+
+    if (bookingError) {
+      console.error("Booking error details:", bookingError)
+      throw new Error(`Booking creation failed: ${bookingError.message || 'Unknown error'}`)
+    }
+    
+    if (!bookingData || bookingData.length === 0) {
+      throw new Error("No booking data returned from database")
+    }
+
+    // Get the booking ID from the response
+    const newBookingId: string = bookingData[0].id;
+    
+    // Create traveler records
+    const travelerPromises = travelers.map(async (traveler, index) => {
+      // Format date of birth
+      const dob = `${traveler.dateOfBirth.year}-${String(traveler.dateOfBirth.month).padStart(2, '0')}-${String(traveler.dateOfBirth.day).padStart(2, '0')}`
+
+      const { error: travelerError } = await supabase.from("travelers").insert({
+        booking_id: newBookingId,
+        first_name: traveler.firstName,
+        last_name: traveler.lastName,
+        full_name: `${traveler.firstName} ${traveler.lastName}`, // Add full_name field
+        email: traveler.email,
+        gender: traveler.gender,
+        date_of_birth: dob,
+        phone: traveler.phone,
+        instagram_handle: traveler.instagramHandle || null,
+        country: traveler.country,
+        is_subscribed: traveler.email === travelers[0].email ? keepMeLooped : false,
+      })
+
+      if (travelerError) {
+        console.error(`Error creating traveler ${index + 1}:`, travelerError)
+        throw new Error(`Failed to create traveler ${index + 1}: ${travelerError.message || 'Unknown error'}`)
+      }
+    })
+
+    // Wait for all traveler records to be created
+    await Promise.all(travelerPromises)
+    
+    // Load Razorpay script
+    const scriptLoaded = await loadRazorpayScript()
+    if (!scriptLoaded) {
+      throw new Error('Failed to load payment gateway. Please try again.')
+    }
+    
+    // Create Razorpay order for the NEW booking
+    const orderData = await createRazorpayOrder(newBookingId)
+
+    // Initialize Razorpay payment
+    const options: RazorpayOptions = {
+      key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+      amount: orderData.amount,
+      currency: orderData.currency,
+      name: 'Tourcrow',
+      description: `Deposit for ${newBookingTripData.name || trip.destination}`,
+      order_id: orderData.id,
+      handler: (response: RazorpayResponse) => {
+        handlePaymentVerification(response, newBookingId, newTripId);
+      },
+      prefill: {
+        name: `${travelers[0].firstName} ${travelers[0].lastName}`,
+        email: travelers[0].email,
+        contact: travelers[0].phone,
+      },
+      theme: {
+        color: '#ef4444',
+      },
+      modal: {
+        ondismiss: () => {
+          handlePaymentCancel(newBookingId, newTripId);
+        }
+      }
+    }
+
+    initializeRazorpay(options);
+
+    // Don't set isSubmitting to false here as payment is still in progress
+  }
+
+  // Helper functions to handle Razorpay integration
+  const handlePaymentVerification = async (
+    response: RazorpayResponse,
+    paymentBookingId: string,
+    paymentTripId: string,
+    depositAmount?: number
+  ): Promise<void> => {
+    try {
+      // Verify payment
+      const verifyResponse = await fetch('/api/payment/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          razorpay_order_id: response.razorpay_order_id,
+          razorpay_payment_id: response.razorpay_payment_id,
+          razorpay_signature: response.razorpay_signature,
+          bookingId: paymentBookingId,
+        }),
+      })
+
+      if (verifyResponse.ok) {
+        // Update booking status to confirmed
+        const updateData: Record<string, any> = { 
+          status: 'confirmed',
+          payment_id: response.razorpay_payment_id,
+          payment_order_id: response.razorpay_order_id,
+          payment_signature: response.razorpay_signature
+        };
+        
+        // Add payment date and amount for retry payments
+        if (depositAmount) {
+          updateData.payment_date = new Date().toISOString();
+          updateData.payment_amount = depositAmount;
+        }
+        
+        await supabase
+          .from('bookings')
+          .update(updateData)
+          .eq('id', paymentBookingId)
+
+        toast({
+          title: "Payment Successful!",
+          description: "Your booking has been confirmed. You'll receive a confirmation email shortly.",
+        })
+        
+        // Show a loading state while we redirect
+        setIsSubmitting(true)
+
+        // Redirect to success page with a small delay to ensure UI updates
+        setTimeout(() => {
+          router.push(`/trip/${paymentTripId}/booking-confirmation?booking=${paymentBookingId}`)
+        }, 1000)
+      } else {
+        throw new Error('Payment verification failed')
+      }
+    } catch (error) {
+      console.error('Payment verification error:', error)
+      toast({
+        variant: "destructive",
+        title: "Payment Verification Failed",
+        description: "Please contact support with your payment details.",
+      })
+      
+      // Redirect to payment failed page
+      router.push(`/trip/${paymentTripId}/payment-failed?booking=${paymentBookingId}&error=Payment verification failed`)
+    }
+  }
+
+  const handlePaymentCancel = (cancelBookingId: string, cancelTripId: string): void => {
+    setIsSubmitting(false)
+    toast({
+      variant: "destructive",
+      title: "Payment Cancelled",
+      description: "Your booking has been saved but payment was not completed.",
+    })
+    
+    // Redirect to payment failed page with cancelled reason
+    router.push(`/trip/${cancelTripId}/payment-failed?booking=${cancelBookingId}&error=Payment was cancelled`)
+  }
+
+  const initializeRazorpay = (
+    options: RazorpayOptions
+  ): void => {
+    const rzp = new window.Razorpay(options)
+    rzp.open()
+  }
 
   return (
     <div className="min-h-screen bg-[#fffbe5]">
@@ -414,45 +750,48 @@ export default function BookingForm({ trip, onBack }: BookingFormProps) {
                       >
                         <option value="">Year</option>
                         {[...Array(100)].map((_, i) => {
-                          const year = new Date().getFullYear() - i
+                          const year = new Date().getFullYear() - i;
                           return (
-                            <option key={i} value={year.toString()}>
+                            <option key={year} value={year}>
                               {year}
                             </option>
-                          )
+                          );
                         })}
                       </select>
                     </div>
-                    {traveler.ageError && <p className="text-red-600 text-sm mt-1">{traveler.ageError}</p>}
+                    {traveler.ageError && (
+                      <p className="text-red-500 text-sm mt-1">{traveler.ageError}</p>
+                    )}
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label htmlFor={`phone-${index}`} className="block text-sm font-medium text-gray-700 mb-1">
-                        Phone <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="tel"
-                        id={`phone-${index}`}
-                        value={traveler.phone}
-                        onChange={(e) => handleInputChange(index, "phone", e.target.value)}
-                        className="w-full p-2 border border-gray-300 rounded"
-                        required
-                      />
-                      {traveler.phoneError && <div className="text-sm text-red-500 mt-1">{traveler.phoneError}</div>}
-                    </div>
-                    <div>
-                      <label htmlFor={`instagram-${index}`} className="block text-sm font-medium text-gray-700 mb-1">
-                        Instagram Handle
-                      </label>
-                      <input
-                        type="text"
-                        id={`instagram-${index}`}
-                        value={traveler.instagramHandle}
-                        onChange={(e) => handleInputChange(index, "instagramHandle", e.target.value)}
-                        className="w-full p-2 border border-gray-300 rounded"
-                      />
-                    </div>
+                  <div className="mb-4">
+                    <label htmlFor={`phone-${index}`} className="block text-sm font-medium text-gray-700 mb-1">
+                      Phone Number <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      id={`phone-${index}`}
+                      value={traveler.phone}
+                      onChange={(e) => handleInputChange(index, "phone", e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded"
+                      required
+                    />
+                    {traveler.phoneError && (
+                      <p className="text-red-500 text-sm mt-1">{traveler.phoneError}</p>
+                    )}
+                  </div>
+
+                  <div className="mb-4">
+                    <label htmlFor={`instagramHandle-${index}`} className="block text-sm font-medium text-gray-700 mb-1">
+                      Instagram Handle
+                    </label>
+                    <input
+                      type="text"
+                      id={`instagramHandle-${index}`}
+                      value={traveler.instagramHandle}
+                      onChange={(e) => handleInputChange(index, "instagramHandle", e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded"
+                    />
                   </div>
 
                   <div className="mb-4">
@@ -467,95 +806,138 @@ export default function BookingForm({ trip, onBack }: BookingFormProps) {
                       required
                     >
                       <option value="India">India</option>
-                      <option value="United States">United States</option>
+                      <option value="USA">USA</option>
                       <option value="Canada">Canada</option>
-                      <option value="United Kingdom">United Kingdom</option>
+                      <option value="UK">UK</option>
                       <option value="Australia">Australia</option>
-                      {/* Add more countries as needed */}
+                      <option value="Other">Other</option>
                     </select>
                   </div>
                 </div>
               ))}
 
-              <button
-                type="button"
-                onClick={handleAddTraveler}
-                className="flex items-center text-amber-500 font-medium mb-6"
-              >
-                + Add Traveler
-              </button>
-
-              <div className="flex items-start mb-8">
-                <input
-                  type="checkbox"
-                  id="keepMeLooped"
-                  checked={keepMeLooped}
-                  onChange={() => setKeepMeLooped(!keepMeLooped)}
-                  className="mt-1 mr-2"
-                />
-                <label htmlFor="keepMeLooped" className="text-gray-700">
-                  Keep me looped in on all things travel
-                  <br />
-                  <span className="text-sm text-gray-500">Traveler 1 email only</span>
-                </label>
+              {/* Payment Disclaimer */}
+              <div className="mb-6 p-4 bg-yellow-50 border-l-4 border-yellow-400 text-yellow-700">
+                <p className="text-sm">
+                  <Info className="inline-block w-5 h-5 mr-1" />
+                  You will be redirected to a secure payment gateway to complete your booking. Your payment information is not stored on our servers.
+                </p>
               </div>
 
-              <div className="flex justify-end">
+              {/* Total Price Display */}
+              <div className="mb-6">
+                <span className="text-lg font-semibold text-gray-900">
+                  Total Price: ₹{totalPrice}
+                </span>
+              </div>
+
+              {/* Submit Button */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
+                <button
+                  type="button"
+                  onClick={handleAddTraveler}
+                  className="inline-flex items-center justify-center px-4 py-2 mb-4 sm:mb-0 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                >
+                  Add Another Traveler
+                </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-8 rounded-full transition-colors disabled:bg-red-300"
+                  className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:bg-gray-400"
                 >
                   {isSubmitting ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin inline" />
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                       Processing...
                     </>
                   ) : (
-                    "Continue"
+                    "Proceed to Payment"
                   )}
                 </button>
               </div>
+
+              {/* Note about payment retries */}
+              {isRetryPayment && (
+                <div className="p-4 mb-6 text-sm text-gray-700 bg-gray-100 border-l-4 border-gray-400">
+                  <p>
+                    You are currently in retry mode for this booking. If the payment is successful, your booking will be confirmed.
+                  </p>
+                </div>
+              )}
             </form>
           </div>
 
-          {/* Price Summary */}
+          {/* Trip Details Sidebar */}
           <div className="w-full lg:w-1/3">
-            <div className="bg-white rounded-lg shadow-md p-6 sticky top-6">
-              <h3 className="text-lg font-semibold mb-4">Trip Price</h3>
-
-              {/* Price breakdown per traveler */}
-              <div className="space-y-2 mb-4">
-                {travelers.map((_, index) => (
-                  <div key={index} className="flex justify-between">
-                    <span>Traveler {index + 1}</span>
-                    <span>₹{(trip.price || 0).toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="border-t border-gray-200 my-4"></div>
-
-              <div className="flex justify-between font-semibold">
-                <span>Total</span>
-                <span>₹{totalPrice.toLocaleString()}</span>
-              </div>
-
-              <div className="flex justify-between items-center mt-4 mb-2">
-                <span className="font-semibold">Due Now</span>
-                <div className="flex items-center">
-                  <span className="font-semibold">₹{depositAmount.toLocaleString()}</span>
-                  <Info className="w-4 h-4 ml-1 text-gray-400" />
+            <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Trip Details</h2>
+              <div className="flex flex-col space-y-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Destination:</span>
+                  <span className="block text-lg font-semibold text-gray-900">{trip.destination}</span>
+                </div>
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Dates:</span>
+                  <span className="block text-lg font-semibold text-gray-900">
+                    {trip.start_date && trip.end_date
+                      ? `${new Date(trip.start_date).toLocaleDateString("en-US", {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                        })} - ${new Date(trip.end_date).toLocaleDateString("en-US", {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                        })}`
+                      : "Flexible Dates"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Duration:</span>
+                  <span className="block text-lg font-semibold text-gray-900">
+                    {trip.duration} {trip.duration === 1 ? "night" : "nights"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Price:</span>
+                  <span className="block text-lg font-semibold text-gray-900">
+                    ₹{trip.price} {trip.price === 1 ? "per person" : "per person"}
+                  </span>
                 </div>
               </div>
+            </div>
 
-              <div className="bg-blue-50 p-3 rounded-lg flex items-start mt-4">
-                <div className="text-blue-500 mr-2">
-                  <Info className="w-5 h-5" />
+            {/* Influencer Details */}
+            <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Influencer Details</h2>
+              <div className="flex items-center">
+                <img
+                  src={trip.influencer_avatar}
+                  alt={trip.influcencer_name}
+                  className="w-16 h-16 rounded-full mr-4"
+                />
+                <div>
+                  <p className="text-lg font-semibold text-gray-900">{trip.influcencer_name}</p>
+                  <p className="text-sm text-gray-700">{trip.influencer_bio}</p>
                 </div>
-                <div className="text-sm">
-                  <p className="font-semibold text-blue-700">Fully refundable</p>
-                  <p className="text-blue-600">Until trip confirms, then partial refund</p>
+              </div>
+            </div>
+
+            {/* Payment Information */}
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Payment Information</h2>
+              <div className="flex flex-col space-y-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Total Price:</span>
+                  <span className="block text-lg font-semibold text-gray-900">₹{totalPrice}</span>
+                </div>
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Deposit (25%):</span>
+                  <span className="block text-lg font-semibold text-gray-900">₹{depositAmount}</span>
+                </div>
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Payment Method:</span>
+                  <span className="block text-lg font-semibold text-gray-900">Razorpay</span>
                 </div>
               </div>
             </div>
