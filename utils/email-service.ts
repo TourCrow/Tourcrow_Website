@@ -1,4 +1,4 @@
-import { createClient } from '@/utils/supabase/server'
+import supabase from '@/utils/supabase/server'
 
 interface EmailData {
   to: string
@@ -41,7 +41,6 @@ export async function sendEmail(emailData: EmailData) {
  */
 export async function sendBookingConfirmationEmail(bookingId: string) {
   try {
-    const supabase = createClient()
     
     // Get booking details with traveler and trip information
     const { data: booking, error } = await supabase

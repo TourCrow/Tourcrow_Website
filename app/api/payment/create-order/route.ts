@@ -16,7 +16,9 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required fields' },
         { status: 400 }
       )
-    }    // Create Razorpay order
+    }
+    
+    // Create Razorpay order
     // Ensure receipt length is less than 40 characters (Razorpay requirement)
     // Truncate bookingId if needed to fit within limit
     const receiptId = bookingId.length > 30 ? bookingId.substring(0, 30) : bookingId;
@@ -31,7 +33,8 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    return NextResponse.json(order)  } catch (error: any) {
+    return NextResponse.json(order)
+  } catch (error: any) {
     console.error('Error creating Razorpay order:', error)
     
     // Provide more detailed error information

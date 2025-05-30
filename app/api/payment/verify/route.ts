@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
-import { createClient } from '@/utils/supabase/server'
+import supabase from '@/utils/supabase/server'
 import { sendBookingConfirmationEmail } from '@/utils/email-service'
 
 export async function POST(request: NextRequest) {
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
       bookingId,
       hasSignature: !!razorpay_signature
     })
-
+    
     // Validate required fields
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !bookingId) {
       console.error('Missing required fields for payment verification')
@@ -26,7 +26,9 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required fields' },
         { status: 400 }
       )
-    }    // Verify the payment signature
+    }
+    
+    // Verify the payment signature
     const key_secret = process.env.RAZORPAY_KEY_SECRET!
     const body = razorpay_order_id + "|" + razorpay_payment_id
     const expectedSignature = crypto
@@ -47,10 +49,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
-
-    // Create a Supabase client for server-side operations
-    const supabase = createClient()
-
+    
     // Update the booking with payment details
     const { error: updateError } = await supabase
       .from('bookings')

@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams, useParams } from "next/navigation"
 import { CheckCircle, Download, Mail, Calendar, MapPin, Users, CreditCard } from "lucide-react"
 import { supabase } from "@/utils/supabase/client"
 
@@ -29,21 +29,22 @@ interface BookingDetails {
   }>
 }
 
-const BookingConfirmationPage = ({ params }: { params: { id: string } }) => {
+const BookingConfirmationPage = () => {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const params = useParams()
   const [booking, setBooking] = useState<BookingDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const bookingId = searchParams.get('booking')
-
+  const tripId = params.id as string
   useEffect(() => {
     if (!bookingId) {
-      router.push(`/trip/${params.id}`)
+      router.push(`/trip/${tripId}`)
       return
     }
 
     fetchBookingDetails()
-  }, [bookingId, params.id])
+  }, [bookingId, tripId])
 
   const fetchBookingDetails = async () => {
     try {
@@ -69,10 +70,9 @@ const BookingConfirmationPage = ({ params }: { params: { id: string } }) => {
         .single()
 
       if (error) throw error
-      setBooking(data)
-    } catch (error: any) {
+      setBooking(data)    } catch (error: any) {
       console.error("Error fetching booking:", error)
-      router.push(`/trip/${params.id}`)
+      router.push(`/trip/${tripId}`)
     } finally {
       setLoading(false)
     }
@@ -119,9 +119,8 @@ const BookingConfirmationPage = ({ params }: { params: { id: string } }) => {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Booking Not Found</h1>
-          <button
-            onClick={() => router.push(`/trip/${params.id}`)}
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Booking Not Found</h1>          <button
+            onClick={() => router.push(`/trip/${tripId}`)}
             className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700"
           >
             Back to Trip

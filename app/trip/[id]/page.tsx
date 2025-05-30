@@ -7,12 +7,13 @@ import Link from "next/link"
 import { supabase } from "@/utils/supabase/client"
 import { formatDate, calculateDuration } from "@/utils/format-date"
 import type { Trip, TripActivity, TripInclusion, TripExclusion } from "@/types/trips"
-import { use } from "react"
+import { useParams } from "next/navigation"
 import BookingForm from "./booking"
 import { getTripImageUrl } from "@/lib/image-helpers"
 
-export default function TripDetail({ params }: { params: Promise<{ id: string }> }) {
-    const { id } = use(params)
+export default function TripDetail() {
+    const params = useParams()
+    const id = params.id as string
     const [trip, setTrip] = useState<Trip | null>(null)
     const [tripDetails, setTripDetails] = useState<any | null>(null)
     const [activities, setActivities] = useState<TripActivity[]>([])

@@ -33,36 +33,37 @@ interface BookingDetails {
 }
 
 export default function PaymentPage() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const params = useParams()
-  const { toast } = useToast()
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const params = useParams();
+  const { toast } = useToast();
   
-  const [booking, setBooking] = useState<BookingDetails | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [processing, setProcessing] = useState(false)
-  const bookingId = searchParams.get('booking')
-  const tripId = params.id as string
+  const [booking, setBooking] = useState<BookingDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState(false);
+  const bookingId = searchParams.get('booking');
+  const tripId = params.id as string;
 
   // Calculate deposit amount (25% of total)
-  const depositAmount = booking ? booking.total_price * 0.25 : 0
+  const depositAmount = booking ? booking.total_price * 0.25 : 0;
 
   useEffect(() => {
-    if (!bookingId) {      toast({
+    if (!bookingId) {
+      toast({
         variant: "destructive",
         title: "Invalid Booking",
         description: "No booking ID found. Please start the booking process again.",
-      })
-      router.push(`/trip/${tripId}`)
-      return
+      });
+      router.push(`/trip/${tripId}`);
+      return;
     }
 
-    fetchBookingDetails()
-  }, [bookingId, tripId])
+    fetchBookingDetails();
+  }, [bookingId, tripId]);
 
   const fetchBookingDetails = async () => {
     try {
-      setLoading(true)
+      setLoading(true);
       const { data, error } = await supabase
         .from("bookings")
         .select(`
@@ -80,9 +81,10 @@ export default function PaymentPage() {
           )
         `)
         .eq("id", bookingId)
-        .single()
+        .single();
 
       if (error) throw error;
+
       setBooking(data);
     } catch (error: any) {
       console.error("Error fetching booking:", error);
@@ -91,21 +93,21 @@ export default function PaymentPage() {
         title: "Error",
         description: "Could not load booking details. Please try again.",
       });
-      router.push(`/trip/${tripId}`)
+      router.push(`/trip/${tripId}`);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const loadRazorpayScript = () => {
     return new Promise((resolve) => {
-      const script = document.createElement('script')
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js'
-      script.onload = () => resolve(true)
-      script.onerror = () => resolve(false)
-      document.body.appendChild(script)
-    })
-  }
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
 
   const createRazorpayOrder = async () => {
     try {
@@ -118,33 +120,33 @@ export default function PaymentPage() {
           amount: depositAmount,
           currency: 'INR',
           bookingId: bookingId,
-          tripId: params.id,
+          tripId: tripId,
         }),
-      })
+      });
 
       if (!response.ok) {
-        throw new Error('Failed to create payment order')
+        throw new Error('Failed to create payment order');
       }
 
-      return await response.json()
+      return await response.json();
     } catch (error) {
-      console.error('Error creating Razorpay order:', error)
-      throw error
+      console.error('Error creating Razorpay order:', error);
+      throw error;
     }
-  }
+  };
 
   const handlePayment = async () => {
     try {
-      setProcessing(true)
+      setProcessing(true);
 
       // Load Razorpay script
-      const scriptLoaded = await loadRazorpayScript()
+      const scriptLoaded = await loadRazorpayScript();
       if (!scriptLoaded) {
-        throw new Error('Failed to load Razorpay script')
+        throw new Error('Failed to load Razorpay script');
       }
 
       // Create order
-      const orderData = await createRazorpayOrder()
+      const orderData = await createRazorpayOrder();
 
       const options = {
         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, // Your Razorpay key_id
@@ -167,7 +169,7 @@ export default function PaymentPage() {
                 razorpay_signature: response.razorpay_signature,
                 bookingId: bookingId,
               }),
-            })
+            });
 
             if (verifyResponse.ok) {
               // Update booking status to confirmed
@@ -177,25 +179,25 @@ export default function PaymentPage() {
                   status: 'confirmed',
                   payment_id: response.razorpay_payment_id 
                 })
-                .eq('id', bookingId)
+                .eq('id', bookingId);
 
               toast({
                 title: "Payment Successful!",
                 description: "Your booking has been confirmed. You'll receive a confirmation email shortly.",
-              })
+              });
 
               // Redirect to success page
-              router.push(`/trip/${params.id}/booking-confirmation?booking=${bookingId}`)
+              router.push(`/trip/${tripId}/booking-confirmation?booking=${bookingId}`);
             } else {
-              throw new Error('Payment verification failed')
+              throw new Error('Payment verification failed');
             }
           } catch (error) {
-            console.error('Payment verification error:', error)
+            console.error('Payment verification error:', error);
             toast({
               variant: "destructive",
               title: "Payment Verification Failed",
               description: "Please contact support with your payment details.",
-            })
+            });
           }
         },
         prefill: {
@@ -205,30 +207,30 @@ export default function PaymentPage() {
         },
         notes: {
           booking_id: bookingId,
-          trip_id: params.id,
+          trip_id: tripId,
         },
         theme: {
           color: '#3B82F6',
         },
         modal: {
           ondismiss: function() {
-            setProcessing(false)
+            setProcessing(false);
           }
         }
-      }
+      };
 
-      const paymentObject = new window.Razorpay(options)
-      paymentObject.open()
+      const paymentObject = new window.Razorpay(options);
+      paymentObject.open();
     } catch (error: any) {
-      console.error('Payment error:', error)
+      console.error('Payment error:', error);
       toast({
         variant: "destructive",
         title: "Payment Error",
         description: error.message || "Failed to initiate payment. Please try again.",
-      })
-      setProcessing(false)
+      });
+      setProcessing(false);
     }
-  }
+  };
 
   if (loading) {
     return (
@@ -238,7 +240,7 @@ export default function PaymentPage() {
           <p className="mt-4 text-gray-600">Loading payment details...</p>
         </div>
       </div>
-    )
+    );
   }
 
   if (!booking) {
@@ -248,14 +250,14 @@ export default function PaymentPage() {
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Booking Not Found</h1>
           <p className="text-gray-600 mb-6">Could not find your booking details.</p>
           <button
-            onClick={() => router.push(`/trip/${params.id}`)}
+            onClick={() => router.push(`/trip/${tripId}`)}
             className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700"
           >
             Back to Trip
           </button>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -386,5 +388,5 @@ export default function PaymentPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

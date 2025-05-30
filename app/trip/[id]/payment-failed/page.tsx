@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams, useParams } from "next/navigation"
 import { AlertCircle, ArrowLeft, RefreshCw } from "lucide-react"
 import { supabase } from "@/utils/supabase/client"
 
@@ -83,13 +83,15 @@ const CardFooter = ({ className = "", children }: { className?: string; children
   </div>
 );
 
-export default function PaymentFailedPage({ params }: { params: { id: string } }) {
+export default function PaymentFailedPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const params = useParams()
   const [loading, setLoading] = useState(false)
   const bookingId = searchParams.get('booking')
   const errorMessage = searchParams.get('error') || 'Your payment was not successful'
   const [bookingInfo, setBookingInfo] = useState<LocalBookingInfo | null>(null)
+  const tripId = params.id as string
 
   useEffect(() => {
     if (bookingId) {
@@ -148,16 +150,15 @@ export default function PaymentFailedPage({ params }: { params: { id: string } }
       console.error('Error:', error)
     }
   }
-
   const handleRetryPayment = async () => {
-    if (!bookingId || !params.id) return
+    if (!bookingId || !tripId) return
     
     setLoading(true)
-    router.push(`/trip/${params.id}/booking?retry=${bookingId}`)
+    router.push(`/trip/${tripId}/booking?retry=${bookingId}`)
   }
 
   const handleReturnToTrip = () => {
-    router.push(`/trip/${params.id}`)
+    router.push(`/trip/${tripId}`)
   }
 
   return (

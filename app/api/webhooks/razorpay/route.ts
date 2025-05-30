@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
-import { createClient } from '@/utils/supabase/server'
+import supabase from '@/utils/supabase/server'
 
 export async function POST(request: NextRequest) {
   try {
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
 
 async function handlePaymentAuthorized(payment: any) {
   try {
-    const supabase = createClient()
+    // Use the imported supabase client directly
     
     // Extract receipt ID to get booking ID
     const receipt = payment.notes?.receipt || payment.receipt || ''
@@ -110,8 +110,6 @@ async function handlePaymentAuthorized(payment: any) {
 
 async function handlePaymentFailed(payment: any) {
   try {
-    const supabase = createClient()
-    
     // Extract receipt ID to get booking ID (same as above)
     const receipt = payment.notes?.receipt || payment.receipt || ''
     let bookingId = ''
@@ -152,8 +150,6 @@ async function handlePaymentFailed(payment: any) {
 
 async function handleRefundProcessed(refund: any) {
   try {
-    const supabase = createClient()
-    
     // Get payment ID from refund
     const paymentId = refund.payment_id
     

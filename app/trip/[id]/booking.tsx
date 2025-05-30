@@ -349,8 +349,8 @@ export default function BookingForm({ trip, onBack }: BookingFormProps) {
       name: 'Tourcrow',
       description: `Deposit for ${retryTripData.name || trip.destination}`,
       order_id: orderData.id,
-      handler: (response: RazorpayResponse) => {
-        handlePaymentVerification(response, retryBookingId, retryTripId, retryDepositAmount);
+      handler: async (response: RazorpayResponse) => {
+        await handlePaymentVerification(response, retryBookingId, retryTripId, retryDepositAmount);
       },
       prefill: {
         name: retryBookingData.travelers[0]?.full_name || '',
@@ -472,8 +472,8 @@ export default function BookingForm({ trip, onBack }: BookingFormProps) {
       name: 'Tourcrow',
       description: `Deposit for ${newBookingTripData.name || trip.destination}`,
       order_id: orderData.id,
-      handler: (response: RazorpayResponse) => {
-        handlePaymentVerification(response, newBookingId, newTripId);
+      handler: async (response: RazorpayResponse) => {
+        await handlePaymentVerification(response, newBookingId, newTripId);
       },
       prefill: {
         name: `${travelers[0].firstName} ${travelers[0].lastName}`,
@@ -895,7 +895,7 @@ export default function BookingForm({ trip, onBack }: BookingFormProps) {
                 <div>
                   <span className="text-sm font-medium text-gray-700">Duration:</span>
                   <span className="block text-lg font-semibold text-gray-900">
-                    {trip.duration} {trip.duration === 1 ? "night" : "nights"}
+                    {Math.ceil((new Date(trip.end_date).getTime() - new Date(trip.start_date).getTime()) / (1000 * 60 * 60 * 24))} nights
                   </span>
                 </div>
                 <div>
@@ -912,13 +912,13 @@ export default function BookingForm({ trip, onBack }: BookingFormProps) {
               <h2 className="text-xl font-bold text-gray-900 mb-4">Influencer Details</h2>
               <div className="flex items-center">
                 <img
-                  src={trip.influencer_avatar}
+                  src={trip.image_url || "/Logo.svg"} 
                   alt={trip.influcencer_name}
                   className="w-16 h-16 rounded-full mr-4"
                 />
                 <div>
                   <p className="text-lg font-semibold text-gray-900">{trip.influcencer_name}</p>
-                  <p className="text-sm text-gray-700">{trip.influencer_bio}</p>
+                  <p className="text-sm text-gray-700">{trip.influencer_category}</p>
                 </div>
               </div>
             </div>
