@@ -4,19 +4,44 @@ import React, { useState, useEffect } from "react"
 import { useRouter, useSearchParams, useParams } from "next/navigation"
 import { AlertCircle, ArrowLeft, RefreshCw } from "lucide-react"
 import { supabase } from "@/utils/supabase/client"
+import { useToast } from "@/hooks/use-toast"
+import { PostgrestError } from '@supabase/supabase-js'
 
-// Define the BookingInfo type inline
+// Define types for the trip influencer data
+interface TripInfluencer {
+  id: string;
+  title?: string;
+  destination?: string;
+  name?: string;
+}
+
+// Define the trip data structure
+interface TripDataResponse {
+  id: string;
+  destination: string;
+}
+
+// Define the booking data structure
+interface BookingDataResponse {
+  id: string;
+  total_price: number;
+  contact_email: string;
+  status?: string;
+  trip_id?: string;
+  trips?: TripDataResponse;
+  payment_id?: string;
+  payment_date?: string;
+}
+
+// Define the BookingInfo type with all possible fields
 interface LocalBookingInfo {
   id: string;
   trip_name: string;
   total_price: number;
   contact_email: string;
-}
-
-// Define trip data structure for proper type handling
-interface TripData {
-  name?: string;
-  [key: string]: any;
+  status?: string;
+  payment_id?: string;
+  payment_date?: string;
 }
 
 // Define UI components inline to avoid import issues
@@ -88,77 +113,196 @@ export default function PaymentFailedPage() {
   const searchParams = useSearchParams()
   const params = useParams()
   const [loading, setLoading] = useState(false)
+  const { toast } = useToast()
   const bookingId = searchParams.get('booking')
   const errorMessage = searchParams.get('error') || 'Your payment was not successful'
   const [bookingInfo, setBookingInfo] = useState<LocalBookingInfo | null>(null)
   const tripId = params.id as string
 
   useEffect(() => {
-    if (bookingId) {
-      fetchBookingBasicInfo()
+    if (!bookingId) {
+      toast({
+        variant: "destructive",
+        title: "Missing Information",
+        description: "No booking ID was provided. Please start a new booking.",
+      })
+      router.push(`/trip/${tripId}`)
+      return
     }
-  }, [bookingId])
+    
+    fetchBookingBasicInfo()
+  }, [bookingId, tripId])
+  const handleDatabaseError = (error: PostgrestError | Error | unknown): string => {
+    // First log the complete error object for debugging
+    console.error('Raw error object:', JSON.stringify(error, null, 2));
+
+    // Handle standard Error objects
+    if (error instanceof Error) {
+      const errorDetails = {
+        name: error.name,
+        message: error.message || 'No error message available',
+        stack: error.stack
+      };
+      console.error('Standard Error:', errorDetails);
+      
+      const description = error.message || "An unexpected error occurred while fetching booking information";
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description
+      });
+      return description;
+    } 
+    
+    // Handle Supabase PostgrestError objects
+    if (typeof error === 'object' && error !== null) {
+      const pgError = error as PostgrestError;
+      if (pgError.message || pgError.code || pgError.details) {
+        const errorDetails = {
+          message: pgError.message || 'No message available',
+          code: pgError.code || 'No code available',
+          details: pgError.details || 'No details available'
+        };
+        console.error('Database Error:', errorDetails);
+        
+        const description = [
+          pgError.message,
+          pgError.details,
+          `Code: ${pgError.code}`
+        ].filter(Boolean).join(' - ') || "A database error occurred";
+        
+        toast({
+          variant: "destructive",
+          title: "Database Error",
+          description
+        });
+        return description;
+      }
+    }
+    
+    // Handle completely empty error objects or undefined/null errors
+    const fallbackMessage = "An unexpected error occurred while fetching booking information";
+    console.error('Unknown or Empty Error:', {
+      errorType: typeof error,
+      errorValue: error,
+      errorJSON: JSON.stringify(error)
+    });
+    
+    toast({
+      variant: "destructive",
+      title: "Error",
+      description: fallbackMessage,
+    });
+    return fallbackMessage;
+  }
 
   const fetchBookingBasicInfo = async () => {
-    if (!bookingId) return
+    if (!bookingId) return;
     
+    setLoading(true)
     try {
-      const { data, error } = await supabase
+      const { data: bookingData, error: bookingError } = await supabase
         .from('bookings')
         .select(`
           id,
           total_price,
           contact_email,
-          trip:trip_id (
-            name
+          status,
+          trip_id,
+          payment_id,
+          payment_date,
+          trips:trip_id (
+            id,
+            destination
           )
         `)
         .eq('id', bookingId)
         .single()
 
-      if (error) {
-        console.error('Error fetching booking info:', error)
-        return
-      }      // Extract trip name with proper type handling
+      if (bookingError) {
+        handleDatabaseError(bookingError);
+        return;
+      }
+
+      if (!bookingData) {
+        const message = `No booking found with ID: ${bookingId}`;
+        toast({
+          variant: "destructive",
+          title: "Booking Not Found",
+          description: message,
+        });
+        return;
+      }
+
+      const typedBookingData = bookingData as unknown as BookingDataResponse;
       let tripName = 'your trip';
-      
-      if (data.trip) {
-        const trip = data.trip as TripData | TripData[];
-        
-        if (Array.isArray(trip) && trip.length > 0) {
-          // If it's an array, use the first item's name property
-          const firstTrip = trip[0] as TripData;
-          if (firstTrip && typeof firstTrip === 'object' && 'name' in firstTrip) {
-            tripName = String(firstTrip.name || tripName);
-          }
-        } else if (typeof trip === 'object' && trip !== null && 'name' in trip) {
-          // If it's an object with a name property, use it
-          const tripObject = trip as TripData;
-          tripName = String(tripObject.name || tripName);
-        }
+
+      // Use destination as trip name, since that's what we have in the trips table
+      if (typedBookingData.trips) {
+        tripName = typedBookingData.trips.destination || tripName;
       }
 
       const bookingInfo: LocalBookingInfo = {
-        id: data.id,
+        id: typedBookingData.id,
         trip_name: tripName,
-        total_price: data.total_price,
-        contact_email: data.contact_email
+        total_price: typedBookingData.total_price,
+        contact_email: typedBookingData.contact_email,
+        status: typedBookingData.status,
+        payment_id: typedBookingData.payment_id,
+        payment_date: typedBookingData.payment_date
       };
 
-      setBookingInfo(bookingInfo)
+      setBookingInfo(bookingInfo);
+
+      // Show additional info if there's a payment ID
+      if (typedBookingData.payment_id) {
+        toast({
+          variant: "destructive",
+          title: "Previous Payment Details",
+          description: `Payment ID: ${typedBookingData.payment_id}`,
+        });
+      }
     } catch (error) {
-      console.error('Error:', error)
+      handleDatabaseError(error);
+    } finally {
+      setLoading(false)
     }
   }
+
   const handleRetryPayment = async () => {
     if (!bookingId || !tripId) return
     
     setLoading(true)
-    router.push(`/trip/${tripId}/booking?retry=${bookingId}`)
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ status: 'pending' })
+        .eq('id', bookingId)
+
+      if (error) {
+        throw error;
+      }
+
+      router.push(`/trip/${tripId}/booking?retry=${bookingId}`)
+    } catch (error) {
+      handleDatabaseError(error);
+      setLoading(false);
+    }
   }
 
   const handleReturnToTrip = () => {
     router.push(`/trip/${tripId}`)
+  }
+
+  if (loading) {
+    return (
+      <div className="container mx-auto py-16 px-4">
+        <div className="max-w-2xl mx-auto text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading booking information...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -193,6 +337,9 @@ export default function PaymentFailedPage() {
                 <p>Trip: {bookingInfo.trip_name}</p>
                 <p>Amount: ₹{bookingInfo.total_price.toLocaleString()}</p>
                 <p>Contact Email: {bookingInfo.contact_email}</p>
+                {bookingInfo.payment_id && (
+                  <p className="text-red-500 text-sm mt-2">Error details: {bookingInfo.payment_id}</p>
+                )}
                 <p className="text-sm mt-2">Your booking information has been saved. You can retry payment or contact support.</p>
               </div>
             )}
@@ -212,7 +359,8 @@ export default function PaymentFailedPage() {
               onClick={handleRetryPayment}
               disabled={loading}
             >
-              <RefreshCw className="h-4 w-4" /> Retry Payment
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              {loading ? 'Processing...' : 'Retry Payment'}
             </Button>
           </CardFooter>
         </Card>

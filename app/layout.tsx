@@ -3,6 +3,7 @@ import { Montserrat_Alternates } from 'next/font/google';
 import "./globals.css";
 import Navbar from '../components/Navbar'; // Adjust the path as needed
 import { AuthProvider } from '../contexts/AuthContext';
+import { Toaster } from "@/components/ui/toaster";
 
 
 const montserratAlternates = Montserrat_Alternates({
@@ -32,6 +33,7 @@ export default function RootLayout({
         <AuthProvider>
           <Navbar />
           {children}
+          <Toaster />
         </AuthProvider>
       </body>
     </html>
