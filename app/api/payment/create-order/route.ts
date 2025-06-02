@@ -1,24 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Razorpay from 'razorpay'
 
-// Get credentials with fallbacks
-const key_id = process.env.RAZORPAY_KEY_ID || process.env.key_id || ''
-const key_secret = process.env.RAZORPAY_KEY_SECRET || process.env.key_secret || ''
-
-// Validate credentials
-if (!key_id || !key_secret) {
-  console.error('Missing Razorpay credentials. Ensure RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are set.')
-}
-
-const razorpay = new Razorpay({
-  key_id,
-  key_secret,
-})
-
 export async function POST(request: NextRequest) {
   try {
-    // Check if Razorpay is properly initialized
+    // Get credentials with fallbacks
+    const key_id = process.env.RAZORPAY_KEY_ID || process.env.key_id || ''
+    const key_secret = process.env.RAZORPAY_KEY_SECRET || process.env.key_secret || ''
+
+    // Validate credentials
     if (!key_id || !key_secret) {
+      console.error('Missing Razorpay credentials. Ensure RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are set.')
       return NextResponse.json(
         { 
           error: 'Payment service configuration error',
@@ -27,6 +18,12 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       )
     }
+
+    // Initialize Razorpay with the credentials
+    const razorpay = new Razorpay({
+      key_id,
+      key_secret,
+    })
 
     const { amount, currency, bookingId, tripId } = await request.json()
 
